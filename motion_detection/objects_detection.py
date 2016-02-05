@@ -10,8 +10,9 @@ import numpy as np
 from scipy import signal
 from math import tan,sin,cos
 
-GREEN = (0,250,0)
+BLACK = (10,10,10)
 WHITE = (250,250,250)
+REDISH = (150,150,250)
 
 CAM_ANGLE = 24 # camera vision angle in grads
 PX_TO_HORIZONTAL_PLANE = 105 # number of pixels to the horizontal plane that intersects the frame
@@ -25,10 +26,13 @@ def main(video_file,cam_height):
     print X_SIZE, 'x', Y_SIZE
     print "fps = %i" % FPS
 
-    out = cv2.VideoWriter(video_file[:-4]+'proc.avi',cv2.cv.CV_FOURCC(*'mp4v'), FPS/EVERY_N_FRAME, (X_SIZE,Y_SIZE))
+    fv = np.vectorize(image_binarize)
+    sharp = np.vectorize(sh)
+
+    out = cv2.VideoWriter(video_file[:-4]+'_proc.avi',cv2.cv.CV_FOURCC(*'mp4v'), FPS/EVERY_N_FRAME, (X_SIZE,Y_SIZE))
 
     Kernel = np.ones((7,3),np.float32)/21
-    k_shape = np.shape(K)
+    k_shape = np.shape(Kernel)
     Mx, My = k_shape[0]/2, k_shape[1]/2
 
     px_per_rad = X_SIZE / (2*CAM_ANGLE * np.pi/180)
@@ -36,7 +40,7 @@ def main(video_file,cam_height):
     t1=cv2.getTickCount()
 
     ret, frame1 = cap.read()
-    q = np.zeros((Y_SIZE,X_SIZE),dtype='uint8')
+    q = np.ones((Y_SIZE,X_SIZE),dtype='uint8')
     bkgd = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
     i = 1
     mbr = Mbr(X_SIZE,Y_SIZE)
@@ -50,7 +54,7 @@ def main(video_file,cam_height):
             frame_diff = fv(frame2-bkgd)
             bkgd = cv2.add(bkgd/2,frame2/2)
             
-            dst = sharp(signal.convolve(frame_diff, K)[My:-My,Mx:-Mx],100)
+            dst = sharp(signal.convolve(frame_diff, Kernel)[My:-My,Mx:-Mx],100)
             curr_mbr = mbr.get_mbr(dst)
             if curr_mbr != None:
                 XY1,XY2 = curr_mbr
@@ -69,12 +73,13 @@ def main(video_file,cam_height):
                 obj_y = '' 
                 obj_x = ''
                 
-            frame = cv2.merge([q,q,frame2]) # merging red-colored frame
+            frame = cv2.applyColorMap(frame2, cv2.COLORMAP_HOT)
+            #frame = cv2.merge([q,q,frame2]) # merging red-colored frame
             font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(frame,'VISUAL: male',(230,100), font, 0.4,(100,100,200),2)
-            cv2.putText(frame,'height %s'%str(obj_height),(230,120), font, 0.4,(100,100,200),2)
-            cv2.putText(frame,'dist %s'%str(obj_dist),(230,135), font, 0.4,(100,100,200),2)
-            cv2.putText(frame,'xy (%s, %s)'%(str(obj_x),str(obj_y)),(230,150), font, 0.4,(100,100,200),2)
+            cv2.putText(frame,'VISUAL: male',(230,100), font, 0.4,WHITE,2)
+            cv2.putText(frame,'height %s'%str(obj_height),(230,120), font, 0.4,WHITE,2)
+            cv2.putText(frame,'dist %s'%str(obj_dist),(230,135), font, 0.4,WHITE,2)
+            cv2.putText(frame,'xy (%s, %s)'%(str(obj_x),str(obj_y)),(230,150), font, 0.4,WHITE,2)
             
             out.write(frame)
         i+=1
@@ -87,6 +92,13 @@ def main(video_file,cam_height):
     time = (t2 - t1)/ cv2.getTickFrequency()
     print time,'sec'
 
+
+def image_binarize(x):
+    return 0 if x < 15 or x > 240 else 250
+
+def sh(x,threshold):
+    if x < threshold: return 0
+    else: return 250
 
 def get_mbr(img,X,Y):
     Y,X = np.shape(img)
@@ -140,7 +152,9 @@ class Mbr():
 if __name__ == '__main__':
     Args = sys.argv
     
-    if len(Args) != 4: 
-        print "Usage: python moving_objects_detection.py <video_file> <camera height in meters>"
+    if len(Args) != 3: 
+        print "Usage: python objects_detection.py <video_file> <camera height in meters>"
     else: 
-        main(Args[2],float(Args[3]))
+        video_file = Args[1]
+        camera_height = float(Args[2])
+        main(video_file,camera_height)
