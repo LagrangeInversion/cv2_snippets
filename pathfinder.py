@@ -26,28 +26,7 @@ class Robot(object):
             self.go(target, world)
 
         print 'Found %i tags:' %len(self.found_tags)
-        return self.visited, self.missed
-
-    def detour(self, dS, target, obstacle, world):
-         ob_center, ob_radius = obstacle
-
-         if np.linalg.norm(ob_center-target) < ob_radius + 3*self.half_width:
-             # target inside or close the obstacle
-             print '- missed'
-             new_target = ob_center+ob_radius + 4*self.half_width
-             self.go(new_target, world)
-             return False
-         else:
-             ob_direction = ob_center-self.origin
-             if np.cross(dS, ob_direction) > 0: # obstacle is on the left
-                 ort = rot90.dot(-dS)/np.linalg.norm(dS)
-             else:
-                 ort = rot90.dot(dS)/np.linalg.norm(dS)
-
-             new_target = ob_center + ort * (ob_radius + 2*self.half_width)
-             print '- postponed. Go round the obstacle to:',new_target
-             self.go(new_target, world)
-             return True
+        return self.found_tags
 
     def go(self, target, world):
         delta = self.v * self.tick
@@ -73,25 +52,44 @@ class Robot(object):
                     print '- postponed. New tag found at:', new_target
                     self.go(new_target, world)
                     self.go(target, world)
-                    return False
+                    return
 
-                self.origin += dS
-                self.path.append(self.origin.copy())
+                self.move(dS)
                 distance = np.linalg.norm(self.origin-target)
                 continue
             else:
                 if self.detour(dS, target, obs, world):
                     self.go(target, world)
-                return False
+                return
 
         print 'reached'
-        return True
+
+    def move(self, dS):
+        self.origin += dS
+        self.path.append(self.origin.copy())
+
+    def detour(self, dS, target, obstacle, world):
+         ob_center, ob_radius = obstacle
+
+         if np.linalg.norm(ob_center-target) < ob_radius + 3*self.half_width:
+             # target inside or close the obstacle
+             print '- missed'
+             new_target = ob_center+ob_radius + 4*self.half_width
+             self.go(new_target, world)
+             return False
+         else:
+             ob_direction = ob_center-self.origin
+             if np.cross(dS, ob_direction) > 0: # obstacle is on the left
+                 ort = rot90.dot(-dS)/np.linalg.norm(dS)
+             else:
+                 ort = rot90.dot(dS)/np.linalg.norm(dS)
+
+             new_target = ob_center + ort * (ob_radius + 2*self.half_width)
+             print '- postponed. Go round the obstacle to:', new_target
+             self.go(new_target, world)
 
     def remember_tags(self, tags):
-        new_tags = []
-        for tag in tags:
-            if tag not in self.found_tags:
-                new_tags.append(tag)
+        new_tags = [tag for tag in tags if tag not in self.found_tags]
         self.found_tags.update(set(new_tags))
         return new_tags
 
@@ -114,7 +112,7 @@ def spiral(turns=5,origin=(0.,0.),step=15.):
 
 
 class World(object):
-    def __init__(self,obstacles=4,tags=10,distance=10):
+    def __init__(self, obstacles=4, tags=10, distance=10):
         self.obstacles = []
         while len(self.obstacles) < obstacles:
             new_ob = np.array( (250*(random()-0.5),250*(random()-0.5),10+15*random() ) )
@@ -155,8 +153,8 @@ def main(world=World(obstacles=5,tags=25)):
     mission.append(np.array([0.,0.]))
 
     try:
-        visited,missed = robot.start_mission(world, mission)
-        print 'missed points:',missed
+        robot.start_mission(world, mission)
+        print 'missed points:', robot.missed
     except KeyboardInterrupt:
         pass
 
