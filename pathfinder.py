@@ -4,115 +4,97 @@ from random import random
 
 rot90 = np.array([[0,-1],[1,0]])
 
-class Robot:
-    def __init__(self,xy,th,half_width=4,scan_range=20,view_dist=25,tick=0.5):
-        self.xy = np.array(xy)
-        self.th = th
+class Robot(object):
+    def __init__(self, origin, half_width=4, scan_range=20, view_dist=25, tick=0.5):
+        self.origin = np.array(origin)
         self.half_width = half_width
-        self.scan_range = scan_range
-        self.view_dist = view_dist
+        self.scan_range = scan_range # ultrasonic
+        self.view_dist = view_dist   # camera
         self.tick = tick
-
-    def set_angle(self,th):
-        self.th = th
 
     def set_speed(self,speed):
         self.v = speed
 
-    def set_itinarary(self,path):
-        path.reverse() # the first point to visit is the last element in the list
-        self.itinarary = path # the first point to visit is the last element in the list
-
-    def start_mission(self,world,v=10):
-        self.path = [self.xy.copy()]
-        self.set_speed(v)
+    def start_mission(self, world, waypoints, speed=10):
+        self.path = [self.origin.copy()]
+        self.set_speed(speed)
         self.visited = []
         self.missed = []
-        self.found_tags = []
+        self.found_tags = set()
 
-        while len(self.itinarary) > 0:
-            target = self.itinarary.pop()
-            self.go(target,world)
+        for target in waypoints:
+            self.go(target, world)
 
         print 'Found %i tags:' %len(self.found_tags)
-        return self.visited, self.missed
+        return self.found_tags
 
-    def go(self,target,world):
+    def go(self, target, world):
         delta = self.v * self.tick
-        self.th = np.arctan2(*reversed(target - self.xy))
-        dS = delta * np.array([np.cos(self.th), np.sin(self.th)])
+        angle = np.arctan2(*reversed(target - self.origin))
+        dS = delta * np.array([np.cos(angle), np.sin(angle)])
 
         print 'target:', target,
-        distance = np.linalg.norm(self.xy-target)
+        distance = np.linalg.norm(self.origin - target)
         while distance > delta:
-            obs = self.get_obstacles(world.obstacles,distance)
-            if obs == []:
-                tags = self.seek_tags(world.tags)
-                new_tags = self.get_new_tags(tags)
-                sorted_tags = sorted([ (np.linalg.norm(tag-self.xy),tag) for tag in new_tags])
-                if len(sorted_tags)>0:
-                    new_target = np.array(sorted_tags[0][1])
+            obs = world.closest_obstacle(self.origin, world.visible_obstacles(self.origin,
+                                                                              self.scan_range,
+                                                                              self.half_width,
+                                                                              angle,
+                                                                              distance))
+
+
+            if not obs:
+                tags = world.visible_tags(self.origin, self.view_dist, angle)
+                new_tags = self.remember_tags(tags)
+
+                if new_tags:
+                    new_target = np.array(new_tags[0])
                     print '- postponed. New tag found at:', new_target
-                    self.itinarary.append(target)
-                    self.itinarary.append(new_target)
-                    return False
-                self.xy += dS
-                self.path.append(self.xy.copy())
-                distance = np.linalg.norm(self.xy-target)
+                    self.go(new_target, world)
+                    self.go(target, world)
+                    return
+
+                self.move(dS)
+                distance = np.linalg.norm(self.origin-target)
+                continue
             else:
-                ob_center,ob_radius = self.get_closest_obstacle(obs)
+                if self.detour(dS, target, obs, world):
+                    self.go(target, world)
+                return
 
-                if np.linalg.norm(ob_center-target) < ob_radius + 3*self.half_width: # target inside or close the obstacle
-                    print '- missed'
-                    if len(self.itinarary) > 0:
-                        if np.linalg.norm(self.itinarary[-1]-target) > 5*self.half_width:
-                            new_target = np.add(0.7*target, 0.3*self.itinarary[-1])
-                            print 'new intermidiate target added:',new_target
-                            self.itinarary.append(new_target)
-                    #_ = raw_input()
-                    return False
-                else:
-                    ob_direction = ob_center-self.xy
-                    if np.cross(dS, ob_direction) > 0: # obstacle is on the left
-                        ort = rot90.dot(-dS)/np.linalg.norm(dS)
-                    else:
-                        ort = rot90.dot(dS)/np.linalg.norm(dS)
-
-                    new_target = ob_center + ort * (ob_radius + 2*self.half_width)
-                    print '- postponed. Go round the obstacle to:',new_target
-                    self.itinarary.append(target)
-                    self.itinarary.append(new_target)
-                    #_ = raw_input()
-                    return False
         print 'reached'
-        return True
 
-    def get_obstacles(self,obstacles,distance):
-        obs = []
-        xy = self.xy + self.scan_range * np.array([np.cos(self.th), np.sin(self.th)])
-        for ob in obstacles:
-            if np.linalg.norm(xy-ob[:2]) < ob[2]+self.half_width/2 and distance > np.linalg.norm(self.xy-ob[:2])-ob[2]:
-                obs.append(ob)
-        return obs
+    def move(self, dS):
+        self.origin += dS
+        self.path.append(self.origin.copy())
 
-    def get_closest_obstacle(self,obstacles):
-        _,ob_center,ob_radius = min([ (np.linalg.norm(self.xy-ob[:2])-ob[2], ob[:2], ob[2]) for ob in obstacles])
-        return ob_center,ob_radius
+    def detour(self, dS, target, obstacle, world):
+         ob_center, ob_radius = obstacle
 
-    def seek_tags(self,tags):
-        c = self.xy + self.view_dist * np.array([np.cos(self.th), np.sin(self.th)])
-        return [ tuple(tag[:2]) for tag in tags if np.linalg.norm(tag[:2]-c) < self.view_dist/2 ]
+         if np.linalg.norm(ob_center-target) < ob_radius + 3*self.half_width:
+             # target inside or close the obstacle
+             print '- missed'
+             new_target = ob_center+ob_radius + 4*self.half_width
+             self.go(new_target, world)
+             return False
+         else:
+             ob_direction = ob_center-self.origin
+             if np.cross(dS, ob_direction) > 0: # obstacle is on the left
+                 ort = rot90.dot(-dS)/np.linalg.norm(dS)
+             else:
+                 ort = rot90.dot(dS)/np.linalg.norm(dS)
 
-    def get_new_tags(self,tags):
-        new_tags = []
-        for tag in tags:
-            if tag not in self.found_tags:
-                new_tags.append(tag)
-        self.found_tags += new_tags
+             new_target = ob_center + ort * (ob_radius + 2*self.half_width)
+             print '- postponed. Go round the obstacle to:', new_target
+             self.go(new_target, world)
+
+    def remember_tags(self, tags):
+        new_tags = [tag for tag in tags if tag not in self.found_tags]
+        self.found_tags.update(set(new_tags))
         return new_tags
 
 
-def get_spiral(turns=5,origin=(0.,0.),step=15.):
+def spiral(turns=5,origin=(0.,0.),step=15.):
     xy = np.array(origin,dtype='float32')
     R = np.array([[0.,-1.], [1., 0.]])
     L = step
@@ -129,8 +111,8 @@ def get_spiral(turns=5,origin=(0.,0.),step=15.):
     return mission
 
 
-class World:
-    def __init__(self,obstacles=4,tags=10,distance=10):
+class World(object):
+    def __init__(self, obstacles=4, tags=10, distance=10):
         self.obstacles = []
         while len(self.obstacles) < obstacles:
             new_ob = np.array( (250*(random()-0.5),250*(random()-0.5),10+15*random() ) )
@@ -144,19 +126,40 @@ class World:
                 self.tags.append(new_tag)
         print "%i obstacles and %i tags generated:\n" %(obstacles,tags), self.tags
 
+    def visible_obstacles(self, origin, scan_range, half_width, angle, distance):
+        xy = origin + scan_range * np.array([np.cos(angle), np.sin(angle)])
+        for ob in self.obstacles:
+            if np.linalg.norm(xy-ob[:2]) < ob[2]+half_width/2 and distance > np.linalg.norm(origin-ob[:2])-ob[2]:
+                yield ob
 
-def main():
-    robot = Robot((0.,0.),0.77)
-    world = World(obstacles=5,tags=25)
+    def closest_obstacle(self, origin, obstacles):
+        closest = [(np.linalg.norm(origin-ob[:2])-ob[2], ob[:2], ob[2]) for ob in obstacles]
+        if not closest:
+            return None
+        _, ob_center, ob_radius = min(closest)
+        return ob_center, ob_radius
 
-    mission = get_spiral(turns=6,origin=(0.,0.),step=20)
+    def visible_tags(self, origin, view_dist, angle):
+        xy = origin + view_dist * np.array([np.cos(angle), np.sin(angle)])
+        far = lambda tag: np.linalg.norm(tag-origin)
+        tags = [ tuple(tag[:2]) for tag in self.tags if np.linalg.norm(tag[:2]-xy) < view_dist/2 ]
+        return list(sorted(tags, cmp=lambda a,b: cmp(far(a), far(b))))
+
+
+def main(world=World(obstacles=5,tags=25)):
+    robot = Robot((0.,0.))
+
+    mission = spiral(turns=6,origin=(0.,0.),step=20)
     mission.append(np.array([0.,0.]))
 
-    robot.set_itinarary(mission)
-    visited,missed = robot.start_mission(world)
+    try:
+        robot.start_mission(world, mission)
+        print 'missed points:', robot.missed
+    except KeyboardInterrupt:
+        pass
 
-    print 'missed points:',missed
-
+    #plt.ion()
+    #plt.clf()
     fig = plt.figure()
     Ox,Oy,_ = zip(*world.obstacles)
     circs = [ plt.Circle(tuple(ob[:2]),ob[2],color='r') for ob in world.obstacles ]
@@ -164,5 +167,6 @@ def main():
         fig.gca().add_artist(circ)
     Tx,Ty,_ = zip(*world.tags)
     X,Y = zip(*robot.path)
-    plt.plot(Tx,Ty,'g^',Ox,Oy,'ro',X,Y,'b-')
+    plt.plot(Tx,Ty,'g^',Ox,Oy,'ro',X,Y,'b-', X,Y, 'bv')
+    #plt.draw()
     plt.show()
