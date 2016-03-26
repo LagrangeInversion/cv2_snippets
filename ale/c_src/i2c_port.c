@@ -25,7 +25,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <linux/i2c.h>
+//#include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 
 #include "erlcmd.h"
@@ -194,6 +194,36 @@ static void i2c_handle_request(const char *req, void *cookie)
             ei_encode_atom(resp, &resp_index, "error");
             ei_encode_atom(resp, &resp_index, "i2c_wrrd_failed");
         }
+    } else if (strcmp(cmd, "smbus_write_block") == 0) {
+        char write_data[I2C_SMBUS_BLOCK_MAX];
+        int write_len;
+        int type;
+        long llen;
+        long command;
+
+        if (ei_decode_tuple_header(req, &req_index, &arity) < 0 ||
+            arity != 2)
+            errx(EXIT_FAILURE, "smbus_write_block: expecting {command, write_data} tuple");
+
+        if (ei_decode_long(req, &req_index, &command) < 0)
+            errx(EXIT_FAILURE, "smbus_write_block: command should be a long");
+        if (ei_get_type(req, &req_index, &type, &write_len) < 0 ||
+                type != ERL_BINARY_EXT ||
+                write_len < 1 ||
+                write_len > I2C_SMBUS_BLOCK_MAX ||
+                ei_decode_binary(req, &req_index, &write_data, &llen) < 0)
+            errx(EXIT_FAILURE, "smbus_write_block: need a binary between 1 and %d bytes", I2C_SMBUS_BLOCK_MAX);
+
+        int rc;
+        if ((rc = i2c_smbus_write_block_data(i2c->fd, command, write_len, write_data)) == 0) {
+            ei_encode_atom(resp, &resp_index, "ok");
+        } else {
+            ei_encode_tuple_header(resp, &resp_index, 2);
+            ei_encode_atom(resp, &resp_index, "error");
+            ei_encode_long(resp, &resp_index, rc);
+        }
+    } else if (strcmp(cmd, "smbus_read_byte") == 0) {
+        ei_encode_long(resp, &resp_index, i2c_smbus_read_byte(i2c->fd));
     } else
         errx(EXIT_FAILURE, "unknown command: %s", cmd);
 
