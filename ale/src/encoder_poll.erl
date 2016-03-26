@@ -22,7 +22,7 @@ handle_cast(_Msg, State) -> {noreply, State}.
 
 handle_info(loop, _State) ->
     E = (catch wheels:encoder()),
-    gen_event:notify(lagrange_events, E),
+    lagrange:notify(E),
     receive after 100 -> ok end,
     self() ! loop,
     {noreply, E}.
