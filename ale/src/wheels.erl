@@ -67,11 +67,11 @@ handle_call(stop, _From, State = #state{io=Io}) ->
 
 handle_call(encoder, _From, State = #state{io=Io}) ->
     ok = (i2c_fire(53,0))(Io),
-    receive after 80 -> ok end,
+    %receive after 80 -> ok end,
     H1 = i2c:smbus_read_byte(Io), L1 = i2c:smbus_read_byte(Io),
     <<Enc1:16>> = <<H1, L1>>,
     ok = (i2c_fire(53,1))(Io),
-    receive after 80 -> ok end,
+    %receive after 80 -> ok end,
     H2 = i2c:smbus_read_byte(Io), L2 = i2c:smbus_read_byte(Io),
     <<Enc2:16>> = <<H2, L2>>,
     {reply, {encoder, Enc1, Enc2}, State};
