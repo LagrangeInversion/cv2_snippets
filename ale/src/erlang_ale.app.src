@@ -3,7 +3,8 @@
  ,{vsn,"0.1.0"}
  ,{registered, []}
  ,{applications,
-    [kernel,stdlib]}
+    [kernel,stdlib,sasl]}
  ,{env,[]}
+ ,{mod, {erlang_ale_app, [ok, ok]}}
  ,{modules,[gpio, i2c, spi]}
  ]}.

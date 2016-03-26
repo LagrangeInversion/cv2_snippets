@@ -12,7 +12,7 @@
 %% API
 -export([start_link/2, start_link/3, stop/1]).
 -export([write/2, read/2, write_read/3]).
--export([smbus_write_block/3, smbus_read_byte/1]).
+-export([smbus_write_i2c_block_data/3, smbus_read_byte/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -67,9 +67,9 @@ read(ServerRef, Len) ->
 write_read(ServerRef, Data, Len) ->
     gen_server:call(ServerRef, {wrrd, Data, Len}).
 
--spec(smbus_write_block(server_ref(), integer(), data()) -> ok | {error, reason}).
-smbus_write_block(ServerRef, Command, Data) ->
-    gen_server:call(ServerRef, {smbus_write_block, {Command, Data}}).
+-spec(smbus_write_i2c_block_data(server_ref(), integer(), data()) -> ok | {error, reason}).
+smbus_write_i2c_block_data(ServerRef, Command, Data) ->
+    gen_server:call(ServerRef, {smbus_write_i2c_block_data, {Command, Data}}).
 
 -spec(smbus_read_byte(server_ref()) -> integer()).
 smbus_read_byte(ServerRef) ->
@@ -123,7 +123,7 @@ handle_call({wrrd, Data, Len}, _From, State) ->
     Reply = call_port(State, wrrd, {Data, Len}),
     {reply, Reply, State};
 
-handle_call({C = smbus_write_block, Block}, _From, State) ->
+handle_call({C = smbus_write_i2c_block_data, Block}, _From, State) ->
     Reply = call_port(State, C, Block),
     {reply, Reply, State};
 

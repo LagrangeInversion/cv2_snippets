@@ -42,23 +42,24 @@ init([]) ->
 
 handle_call(voltage, _From, State = #state{io=Io}) ->
     ok = (i2c_fire(118))(Io),
-    ok = i2c:smbus_write_block(Io, 1, <<118, 0, 0, 0>>), % read voltage
-    receive after 100 -> ok end,
+    ok = i2c:smbus_write_i2c_block_data(Io, 1, <<118, 0, 0, 0>>), % read voltage
+     receive after 100 -> ok end,
     B1 = i2c:smbus_read_byte(Io),
     B2 = i2c:smbus_read_byte(Io),
     <<Volts:16>> = <<B1, B2>>,
     Volts1 = (5*Volts/1024)/0.4,
     {reply, {voltage, Volts1}, State};
 
-handle_call({motor, {Left, LDir}, {Right, RDir}}, _From, State = #state{io=Io})
-  when Left >= 0,
-       Left =< 255,
-       Right >= 0,
-       Right =< 255,
+handle_call({motor, {LDir, LeftSpeed}, {RDir, RightSpeed}}, _From, State = #state{io=Io})
+  when LeftSpeed >= 0,
+       LeftSpeed =< 255,
+       RightSpeed >= 0,
+       RightSpeed =< 255,
        (LDir =:= forward orelse LDir =:= backward),
        (RDir =:= forward orelse RDir =:= backward) ->
-    ok = (i2c_fire(111, Left, direction(LDir)))(Io),
-    ok = (i2c_fire(112, Right, direction(RDir)))(Io),
+    io:format("motor!~n", []),
+    ok = (i2c_fire(111, direction(LDir), LeftSpeed))(Io),
+    ok = (i2c_fire(112, direction(RDir), RightSpeed))(Io),
     {reply, ok, State};
 
 handle_call(stop, _From, State = #state{io=Io}) ->
@@ -66,10 +67,15 @@ handle_call(stop, _From, State = #state{io=Io}) ->
     {reply, ok, State};
 
 handle_call(encoder, _From, State = #state{io=Io}) ->
-    ok = (i2c_fire(53))(Io),
-    S1 = i2c:smbus_read_byte(Io),
-    S2 = i2c:smbus_read_byte(Io),
-    {reply, {encoder, S1, S2}, State};
+    ok = (i2c_fire(53,0))(Io),
+    receive after 80 -> ok end,
+    H1 = i2c:smbus_read_byte(Io), L1 = i2c:smbus_read_byte(Io),
+    <<Enc1:16>> = <<H1, L1>>,
+    ok = (i2c_fire(53,1))(Io),
+    receive after 80 -> ok end,
+    H2 = i2c:smbus_read_byte(Io), L2 = i2c:smbus_read_byte(Io),
+    <<Enc2:16>> = <<H2, L2>>,
+    {reply, {encoder, Enc1, Enc2}, State};
 
 handle_call(_, _, State) -> {reply, {error, badapi}, State}.
 
@@ -87,7 +93,7 @@ i2c_fire(Command, Arg1) ->
 i2c_fire(Command, Arg1, Arg2) ->
     i2c_fire(Command, Arg1, Arg2, 0).
 i2c_fire(Command, Arg1, Arg2, Arg3) ->
-    fun(Io) -> i2c:smbus_write_block(Io, 1, <<Command, Arg1, Arg2, Arg3>>) end.
+    fun(Io) -> i2c:smbus_write_i2c_block_data(Io, 1, <<Command, Arg1, Arg2, Arg3>>) end.
 
 direction(forward) -> 1;
-direction(backward) -> 2.
+direction(backward) -> 0.
