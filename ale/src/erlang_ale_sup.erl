@@ -13,7 +13,7 @@ init([]) ->
     Procs = [ ?WORKER(gen_event, [{local, lagrange_events}]),
               ?WORKER(lagrange, []),
               ?WORKER(wheels, []),
-              ?WORKER(wheels_poll, [])
+              ?WORKER(encoder_poll, [])
             ],
     % up to 50 restarts in 5 seconds
     {ok, {{one_for_one, 50, 5}, Procs}}.

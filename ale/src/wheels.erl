@@ -57,7 +57,6 @@ handle_call({motor, {LDir, LeftSpeed}, {RDir, RightSpeed}}, _From, State = #stat
        RightSpeed =< 255,
        (LDir =:= forward orelse LDir =:= backward),
        (RDir =:= forward orelse RDir =:= backward) ->
-    io:format("motor!~n", []),
     ok = (i2c_fire(111, direction(LDir), LeftSpeed))(Io),
     ok = (i2c_fire(112, direction(RDir), RightSpeed))(Io),
     {reply, ok, State};

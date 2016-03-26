@@ -1,4 +1,4 @@
--module(wheels_poll).
+-module(encoder_poll).
 -behaviour(gen_server).
 
 -export([start_link/0]).
